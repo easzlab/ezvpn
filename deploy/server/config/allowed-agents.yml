@@ -1,0 +1,9 @@
+agents:
+  - name: test-001
+    auth_key: NiIsInR5cCI6IkpXVCJ9
+    approved_cns:
+      - mtls-client
+  - name: test-002
+    auth_key: Yk0sInR5cCxMIkp19CoK
+    approved_cns:
+      - mtls-client

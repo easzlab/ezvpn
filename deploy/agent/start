@@ -1,0 +1,67 @@
+#!/bin/bash
+
+function logger() {
+  TIMESTAMP=$(date +'%Y-%m-%d %H:%M:%S')
+  case "$1" in
+    debug)
+      echo -e "$TIMESTAMP \033[36mDEBUG\033[0m $2"
+      ;;
+    info)
+      echo -e "$TIMESTAMP \033[32mINFO\033[0m $2"
+      ;;
+    warn)
+      echo -e "$TIMESTAMP \033[33mWARN\033[0m $2"
+      ;;
+    error)
+      echo -e "$TIMESTAMP \033[31mERROR\033[0m $2"
+      ;;
+    *)
+      ;;
+  esac
+}
+
+function usage() {
+    echo -e "\033[33mUsage:\033[0m start <ip:port> <auth_token>"
+    cat <<EOF
+-------------------------------------------------------------------------------------
+Example:
+  start 11.11.11.1:8443 xxxxauth_tokenxxxxxx          # specify server's ip:port and auth_token
+
+EOF
+}
+
+function main(){
+  BASE=$(cd "$(dirname "$0")" || exit 1; pwd)
+  cd "$BASE" || exit 1
+
+  [[ "$#" -eq 2 ]] || { usage >&2; exit 2; }
+
+  logger debug "check server ip:port..."
+  SERVER_IP=$(echo "$1" | awk -F: '{print $1}')
+  SERVER_PORT=$(echo "$1" | awk -F: '{print $2}')
+  [[ $SERVER_IP =~ ^(2(5[0-5]{1}|[0-4][0-9]{1})|[0-1]?[0-9]{1,2})(\.(2(5[0-5]{1}|[0-4][0-9]{1})|[0-1]?[0-9]{1,2})){3}$ ]] || \
+  { logger error "Invalid ip add:$SERVER_IP"; exit 1; }
+  ((SERVER_PORT<1)) && { logger error "Invalid port:$SERVER_PORT"; exit 1; }
+  ((SERVER_PORT>65535)) && { logger error "Invalid port:$SERVER_PORT"; exit 1; }
+  logger debug "got gateway: $SERVER_IP:$SERVER_PORT, token: $2"
+
+  mkdir -p /opt/ezvpn/agent
+  logger debug "copy certs and service file..."
+  cp -f *.pem ezvpn-agent /opt/ezvpn/agent/
+  cp -f ezvpn-agent.service /etc/systemd/system/ezvpn-agent.service
+
+  logger debug "set local hosts entry..."
+  sed -i "/easzlab.io/d" /etc/hosts
+  echo "$SERVER_IP  vpn.easzlab.io" >> /etc/hosts
+
+  logger debug "modify service file..."
+  sed -i "s/_auth_key_/$2/g" /etc/systemd/system/ezvpn-agent.service
+  sed -i "s/_port_/$SERVER_PORT/g" /etc/systemd/system/ezvpn-agent.service
+  
+  logger debug "enable and start ezvpn agent..."
+  systemctl enable ezvpn-agent
+  systemctl daemon-reload && systemctl restart ezvpn-agent && sleep 1
+
+}
+
+main "$@"

@@ -1,0 +1,17 @@
+{
+  "CN": "ezvpn-agent",
+  "hosts": [],
+  "key": {
+    "algo": "rsa",
+    "size": 2048
+  },
+  "names": [
+    {
+      "C": "CN",
+      "ST": "ZJ",
+      "L": "HZ",
+      "O": "EASZLAB.COM",
+      "OU": "EZVPN"
+    }
+  ]
+}

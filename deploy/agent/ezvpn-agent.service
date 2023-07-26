@@ -1,0 +1,24 @@
+[Unit]
+Description=ezvpn agent for going through firewall with mTLS secured connections
+After=network.target
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+WorkingDirectory=/opt/ezvpn/agent
+ExecStart=/opt/ezvpn/agent/ezvpn-agent \
+  --auth=_auth_key_ \
+  --server=vpn.easzlab.io:_port_ \
+  --local=":16116" \
+  --tls=true \
+  --ca=ca.pem \
+  --cert=agent.pem \
+  --key=agent-key.pem
+Restart=always
+RestartSec=15
+LimitNOFILE=infinity
+LimitNPROC=infinity
+LimitCORE=infinity
+
+[Install]
+WantedBy=multi-user.target

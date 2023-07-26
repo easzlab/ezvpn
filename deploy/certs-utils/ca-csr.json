@@ -1,0 +1,19 @@
+{
+    "CN": "mtls-ca",
+    "key": {
+      "algo": "rsa",
+      "size": 2048
+    },
+    "names": [
+      {
+        "C": "CN",
+        "ST": "ZJ",
+        "L": "HZ",
+        "O": "EASZLAB.COM",
+        "OU": "EZVPN"
+      }
+    ],
+    "ca": {
+      "expiry": "876000h"
+    }
+}
