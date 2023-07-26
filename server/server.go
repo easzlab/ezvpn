@@ -42,10 +42,10 @@ func Start() error {
 			ClientCAs:  certPool,
 			MinVersion: tls.VersionTLS12,
 		}
-		log.Println("https server is running on: " + config.SERVER.ControlAddress)
+		log.Println("ezvpn server is running on: " + config.SERVER.ControlAddress)
 		return s.ListenAndServeTLS(config.SERVER.CertFile, config.SERVER.KeyFile)
 	} else {
-		log.Println("http server is running on: " + config.SERVER.ControlAddress)
+		log.Println("ezvpn server is running on: " + config.SERVER.ControlAddress)
 		return s.ListenAndServe()
 	}
 }
