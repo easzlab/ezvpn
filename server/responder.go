@@ -91,7 +91,7 @@ func GetRegister(c echo.Context) error {
 			}
 		}
 	}
-	err := fmt.Errorf("failed to register: invalid auth key: %s", key)
+	err := fmt.Errorf("failed to register: invalid auth key(%s) or cert CN", key)
 	return Error(c, http.StatusUnauthorized, err)
 }
 
@@ -101,18 +101,10 @@ func GetSession(c echo.Context) error {
 		for _, agent := range config.AGENTS.Agents {
 			// check if the key is valid
 			if key == agent.AuthKey {
-				// check CN if mTLS is enabled
-				if c.Request().TLS != nil && len(c.Request().TLS.PeerCertificates) > 0 {
-					cn := c.Request().TLS.PeerCertificates[0].Subject.CommonName
-					for _, approved_cn := range agent.ApprovedCNs {
-						if cn == approved_cn {
-							log.Printf("agent %s@%s registered", agent.Name, c.RealIP())
-							return WebSocket(c, func(ws *websocket.Conn) error {
-								return tunnel(ws)
-							})
-						}
-					}
-				}
+				log.Printf("agent %s@%s session established", agent.Name, c.RealIP())
+				return WebSocket(c, func(ws *websocket.Conn) error {
+					return tunnel(ws)
+				})
 			}
 		}
 	}

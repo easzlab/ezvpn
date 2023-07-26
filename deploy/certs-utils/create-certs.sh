@@ -35,7 +35,6 @@ function create_certs() {
   docker load -i "$BASE/down/cfssl-utils-$CFSSL_VER.tar" > /dev/null
 
   # clean
-  docker ps -a --format="{{ .Names }}"|grep cfssl-utils > /dev/null && \
   logger info "save current certs in backup" && \
   cp -r "$BASE/certs" "$BASE/backup/certs.$(date +'%Y%m%d%H%M%S')" && \
   logger info "stop&remove container: cfssl-utils" && \
@@ -58,11 +57,14 @@ function create_certs() {
   logger info "create agent.pem/agent-key.pem..."
   docker exec -it cfssl-utils sh -c 'cd /certs && cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=mtls agent-csr.json | cfssljson -bare agent'
 
+  logger info "stop&remove container: cfssl-utils" && \
+  docker rm -f cfssl-utils > /dev/null
 }
 
 
 BASE=$(cd "$(dirname "$0")"; pwd)
 cd "$BASE"
 mkdir -p "$BASE/down" "$BASE/certs" "$BASE/backup"
+cp -f "$BASE"/*.json "$BASE/certs/"
 
 create_certs
