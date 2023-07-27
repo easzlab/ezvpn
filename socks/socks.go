@@ -67,7 +67,7 @@ func (s *Server) HandleRequest(conn net.Conn) error {
 	cli := conn.RemoteAddr().String()
 
 	if err := r.ParseRequest(conn); err != nil {
-		log.Printf("failed to parse request, error: %s, client: %s, target: %s", err.Error(), cli, r.DestAddr.String())
+		log.Printf("failed to parse request, error: %s, client: %s, target: %s", err.Error(), cli, "")
 		SendReply(conn, addrTypeNotSupported, nil)
 		return err
 	}
