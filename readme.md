@@ -12,3 +12,31 @@
 客户端新流量连接建立后，新建wss数据连接，连接建立成功后；数据转发如下：
 (socks client) <--conn--> Agent <--ws--> Server <--conn--> (socks server) <--> Destination
 
+## 编译
+
+1. macOS
+
+```
+# 编译 ezvpn-agent
+GOOS=darwin GOARCH=amd64 CGO=0 go build -o ezvpn-agent cmd/agent/main.go
+# 编译 ezvpn-server
+GOOS=darwin GOARCH=amd64 CGO=0 go build -o ezvpn-server cmd/server/main.go
+```
+
+2. linux
+
+```
+# 编译 ezvpn-agent
+GOOS=linux GOARCH=amd64 CGO=0 go build -o ezvpn-agent cmd/agent/main.go
+# 编译 ezvpn-server
+GOOS=linux GOARCH=amd64 CGO=0 go build -o ezvpn-server cmd/server/main.go
+```
+
+3. windows
+
+```
+# 编译 ezvpn-agent.exe，支持后台运行
+GOOS=windows GOARCH=amd64 CGO=0 go build -ldflags -H=windowsgui -o ezvpn-agent.exe cmd/agent/main.go
+# 编译 ezvpn-server.exe，支持后台运行
+GOOS=windows GOARCH=amd64 CGO=0 go build -ldflags -H=windowsgui -o ezvpn-server.exe cmd/server/main.go
+```
