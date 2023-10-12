@@ -65,3 +65,6 @@ function main(){
 }
 
 main "$@"
+
+# Windows上运行命令
+# ezvpn-agent.exe -auth=NiIsInR5cCI6IkpXVCJ9 -local=127.0.0.1:16116 -server=x.x.x.x:8443

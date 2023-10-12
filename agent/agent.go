@@ -63,6 +63,7 @@ func (agent *Agent) Start(ctx context.Context) error {
 		}
 
 		dialer.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify:       true,
 			MinVersion:               tls.VersionTLS13,
 			RootCAs:                  caCertPool,
 			PreferServerCipherSuites: true,
