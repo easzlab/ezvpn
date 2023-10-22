@@ -20,3 +20,4 @@ backup
 certs
 
 *.pem
+*.lock

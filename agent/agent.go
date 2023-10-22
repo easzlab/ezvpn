@@ -31,6 +31,7 @@ type Agent struct {
 	CertFile      string
 	KeyFile       string
 	LocalAddress  string
+	LockFile      string
 }
 
 // wg and ants.Pool is used to manage goroutines.
@@ -51,7 +52,7 @@ func (agent *Agent) Start(ctx context.Context) error {
 	if agent.EnableTLS {
 		cert, err := os.ReadFile(agent.CaFile)
 		if err != nil {
-			log.Fatalf("could not open certificate file: %v", err)
+			return err
 		}
 
 		caCertPool := x509.NewCertPool()
@@ -59,7 +60,7 @@ func (agent *Agent) Start(ctx context.Context) error {
 
 		certificate, err := tls.LoadX509KeyPair(agent.CertFile, agent.KeyFile)
 		if err != nil {
-			log.Fatalf("could not load certificate: %v", err)
+			return err
 		}
 
 		dialer.TLSClientConfig = &tls.Config{
