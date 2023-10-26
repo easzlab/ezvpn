@@ -72,12 +72,17 @@ func WebSocket(c echo.Context, handler func(ws *websocket.Conn) error) error {
 
 func GetRegister(c echo.Context) error {
 	key := c.Param("key")
-	if key != "" {
-		for _, agent := range config.AGENTS.Agents {
-			// check if the key is valid
-			if key == agent.AuthKey {
-				// check CN if mTLS is enabled
-				if c.Request().TLS != nil && len(c.Request().TLS.PeerCertificates) > 0 {
+
+	for _, agent := range config.AGENTS.Agents {
+		// check if the key is valid
+		if key == agent.AuthKey {
+			if c.Request().TLS == nil { // TLS is disabled
+				log.Printf("agent %s@%s registered", agent.Name, c.RealIP())
+				return WebSocket(c, func(ws *websocket.Conn) error {
+					return readFromWS(ws)
+				})
+			} else { // TLS is enabled
+				if len(c.Request().TLS.PeerCertificates) > 0 {
 					cn := c.Request().TLS.PeerCertificates[0].Subject.CommonName
 					for _, approved_cn := range agent.ApprovedCNs {
 						if cn == approved_cn {
@@ -97,17 +102,31 @@ func GetRegister(c echo.Context) error {
 
 func GetSession(c echo.Context) error {
 	key := c.Param("key")
-	if key != "" {
-		for _, agent := range config.AGENTS.Agents {
-			// check if the key is valid
-			if key == agent.AuthKey {
+
+	for _, agent := range config.AGENTS.Agents {
+		// check if the key is valid
+		if key == agent.AuthKey {
+			if c.Request().TLS == nil { // TLS is disabled
 				log.Printf("agent %s@%s session established", agent.Name, c.RealIP())
 				return WebSocket(c, func(ws *websocket.Conn) error {
 					return tunnel(ws)
 				})
+			} else { // TLS is enabled
+				if len(c.Request().TLS.PeerCertificates) > 0 {
+					cn := c.Request().TLS.PeerCertificates[0].Subject.CommonName
+					for _, approved_cn := range agent.ApprovedCNs {
+						if cn == approved_cn {
+							log.Printf("agent %s@%s session established", agent.Name, c.RealIP())
+							return WebSocket(c, func(ws *websocket.Conn) error {
+								return tunnel(ws)
+							})
+						}
+					}
+				}
 			}
 		}
 	}
+
 	err := fmt.Errorf("failed to establish session: invalid auth key: %s", key)
 	return Error(c, http.StatusUnauthorized, err)
 }
