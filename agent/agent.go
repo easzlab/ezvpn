@@ -184,6 +184,9 @@ func (agent *Agent) register(ctx context.Context) error {
 // The tunnel can be canceled via context, it looks like this:
 // (socks client) <--conn--> Agent <--ws--> Server <--conn--> (socks server) <--> Destination
 func (agent *Agent) tunnel(conn net.Conn, ctx context.Context) error {
+
+	defer conn.Close()
+
 	log.Printf("Tunneling local connection from %s", conn.RemoteAddr())
 
 	// Remote connection proxied through WebSocket.
@@ -199,6 +202,7 @@ func (agent *Agent) tunnel(conn net.Conn, ctx context.Context) error {
 	}
 	defer closeWebsocket(ws)
 
+	// Cancelable.
 	unhookCancel := hookCancel(ctx, func() {
 		conn.Close()
 		closeWebsocket(ws)
