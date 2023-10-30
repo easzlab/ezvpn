@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -16,12 +17,13 @@ import (
 	"github.com/easzlab/ezvpn/config"
 	"github.com/gorilla/websocket"
 	"github.com/panjf2000/ants/v2"
+	"github.com/xtaci/smux"
 )
 
-// dialer is the websocket dialer used to connect to a gateway server.
+// dialer is the websocket dialer used to connect to the server.
 var dialer = websocket.DefaultDialer
 
-// Agent tunnels remote port on a gateway server to local destination.
+// Agent tunnels local socks stream to the server.
 type Agent struct {
 	AuthKey       string
 	ServerAddress string
@@ -75,7 +77,7 @@ func (agent *Agent) Start(ctx context.Context) error {
 
 	errCh := make(chan error)
 
-	go (func(c chan error) {
+	go func(c chan error) {
 		// TODO: 用指数退避算法重试
 		retry := time.NewTicker(config.AgentRetryInterval)
 		defer retry.Stop()
@@ -88,7 +90,7 @@ func (agent *Agent) Start(ctx context.Context) error {
 			log.Printf("Agent error %q - recovering...", err)
 			<-retry.C
 		}
-	})(errCh)
+	}(errCh)
 
 	return <-errCh
 }
@@ -116,7 +118,7 @@ func hookCancel(ctx context.Context, handler func()) func() {
 	return unhook
 }
 
-// Reg
+// register create a vpn tunnel, and listen a local socks port to serve
 func (agent *Agent) register(ctx context.Context) error {
 
 	// 1.Connection to the ezvpn server.
@@ -152,106 +154,90 @@ func (agent *Agent) register(ctx context.Context) error {
 
 	log.Printf("Listening on: %s", agent.LocalAddress)
 
-	// Forcifully close connection if the server does not respond to ping.
-	go Watch(ws, config.WsKeepliveInterval, ln.Close)
+	// 3. Setup client side of smux
+	cfg := smux.DefaultConfig()
+	cfg.KeepAliveInterval = config.SmuxSessionKeepAliveInterval
+	cfg.KeepAliveTimeout = config.SmuxSessionKeepAliveTimeout
 
-	go func() {
-		for {
-			// Server does not send message to this channel in the current
-			// protocol, but it is required to drain the channel to check
-			// for ping responses.
-			if _, _, err := ws.NextReader(); err != nil {
-				break
-			}
-		}
-	}()
-
-	for {
-		conn, err := ln.Accept()
-		if err != nil {
-			return err
-		}
-
-		go func() {
-			if err := agent.tunnel(conn, ctx); err != nil {
-				log.Printf("Tunneling error: %s", err)
-			}
-		}()
-	}
-}
-
-// tunnel proxies a local connection(socks protocol) to a remote server via websocket.
-// The tunnel can be canceled via context, it looks like this:
-// (socks client) <--conn--> Agent <--ws--> Server <--conn--> (socks server) <--> Destination
-func (agent *Agent) tunnel(conn net.Conn, ctx context.Context) error {
-
-	defer conn.Close()
-
-	log.Printf("Tunneling local connection from %s", conn.RemoteAddr())
-
-	// Remote connection proxied through WebSocket.
-	var url string
-	if agent.EnableTLS {
-		url = "wss://" + agent.ServerAddress + "/session/" + agent.AuthKey
-	} else {
-		url = "ws://" + agent.ServerAddress + "/session/" + agent.AuthKey
-	}
-	ws, _, err := dialer.DialContext(ctx, url, nil)
+	session, err := smux.Client(ws.UnderlyingConn(), cfg)
 	if err != nil {
 		return err
 	}
-	defer closeWebsocket(ws)
+	defer session.Close()
+
+	errCh := make(chan error, 2)
+
+	// health check of the smux session
+	go func(c chan error) {
+		retry := time.NewTicker(config.SmuxSessionKeepAliveInterval)
+		defer retry.Stop()
+		for {
+			if session.IsClosed() {
+				err := fmt.Errorf("error: broken session with the server")
+				c <- err
+				return
+			}
+			<-retry.C
+		}
+	}(errCh)
+
+	// 4. tunnel accepted local connection
+	go func(c chan error) {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				c <- err
+				return
+			}
+			defer conn.Close()
+
+			go func() {
+				stream, err := session.OpenStream()
+				if err != nil {
+					log.Printf("error open a new stream:%s", err.Error())
+					return
+				}
+				defer stream.Close()
+				if err := agent.tunnel(ctx, conn, stream); err != nil {
+					log.Printf("Tunneling error: %s", err)
+				}
+			}()
+		}
+	}(errCh)
+
+	return <-errCh
+}
+
+// tunnel proxies a local connection(socks protocol) to a remote server via smux stream.
+// The tunnel can be canceled via context, it looks like this:
+// (socks client) <--conn--> Agent <--smux stream--> Server <--conn--> (socks server) <--> Destination
+func (agent *Agent) tunnel(ctx context.Context, conn net.Conn, stream *smux.Stream) error {
+
+	defer conn.Close()
+	defer stream.Close()
+
+	log.Printf("Tunneling local connection from %s", conn.RemoteAddr())
 
 	// Cancelable.
 	unhookCancel := hookCancel(ctx, func() {
 		conn.Close()
-		closeWebsocket(ws)
+		stream.Close()
 	})
 	defer unhookCancel()
 
 	errCh := make(chan error, 2)
 
-	// uplink: (socks client) --conn--> Agent --ws--> Server
+	// uplink: (socks client) --conn--> Agent --smux stream--> Server
 	uplink := func() {
-		func(c chan error) {
-			buf := make([]byte, config.BufferSize)
-
-			for {
-				n, err := conn.Read(buf)
-				if err != nil {
-					c <- err
-					return
-				}
-
-				if err := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
-					c <- err
-					return
-				}
-			}
-		}(errCh)
-
+		buf := make([]byte, config.BufferSize)
+		proxy(stream, conn, buf, errCh)
 		wg.Done()
 	}
 
-	// Downlink: (socks client) <--conn-- Agent <--ws-- Server
+	// Downlink: (socks client) <--conn-- Agent <--smux stream-- Server
 	downlink := func() {
-		func(c chan error) {
-			buf := make([]byte, config.BufferSize)
-
-			for {
-				_, r, err := ws.NextReader()
-				if err != nil {
-					c <- err
-					return
-				}
-
-				if _, err := io.CopyBuffer(conn, r, buf); err != nil {
-					c <- err
-					return
-				}
-			}
-		}(errCh)
-
+		buf := make([]byte, config.BufferSize)
+		proxy(conn, stream, buf, errCh)
 		wg.Done()
 	}
 
@@ -266,17 +252,17 @@ func (agent *Agent) tunnel(conn net.Conn, ctx context.Context) error {
 		err := <-errCh
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				log.Printf("Client %s closed normally. Closing session.", conn.RemoteAddr())
+				log.Printf("Client %s closed normally. Closing connection.", conn.RemoteAddr())
 				return nil
 			}
 
 			if errors.Is(err, net.ErrClosed) {
-				log.Printf("Canceled. Finishing session from %s", conn.RemoteAddr())
+				log.Printf("Canceled. Closing connection %s", conn.RemoteAddr())
 				return nil
 			}
 
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-				log.Printf("Session closed normally. Closing client %s.", conn.RemoteAddr())
+			if errors.Is(err, io.ErrClosedPipe) {
+				log.Printf("Closed by remote peer. Closing connection %s", conn.RemoteAddr())
 				return nil
 			}
 
@@ -289,6 +275,14 @@ func (agent *Agent) tunnel(conn net.Conn, ctx context.Context) error {
 	return nil
 }
 
+// proxy is used to suffle data from src to destination, and sends errors
+// down a dedicated channel
+func proxy(dst net.Conn, src net.Conn, buf []byte, errCh chan error) {
+	_, err := io.CopyBuffer(dst, src, buf)
+	dst.Close()
+	errCh <- err
+}
+
 // closeWebsocket attempts to close a websocket session normally. It is ok to
 // call this function on a connection that has already been closed by the peer.
 func closeWebsocket(ws *websocket.Conn) {
@@ -298,35 +292,4 @@ func closeWebsocket(ws *websocket.Conn) {
 		time.Now().Add(config.WsCloseTimeout),
 	)
 	ws.Close()
-}
-
-// Watch watches for broken WebSocket connection. This function periodically
-// sends ping message to the websocket peer and invokes `handler` on first
-// timeout. The caller must continuously read something from `ws` to allow
-// pong messages to be received.
-func Watch(ws *websocket.Conn, timeout time.Duration, handler func() error) error {
-	ticker := time.NewTicker(timeout)
-	defer ticker.Stop()
-
-	pong := make(chan bool)
-	ws.SetPongHandler(func(_ string) error {
-		pong <- true
-		return nil
-	})
-
-	for tick := range ticker.C {
-		if err := ws.WriteControl(websocket.PingMessage, []byte(""), tick.Add(timeout)); err != nil {
-			break
-		}
-
-		select {
-		case <-pong:
-			continue
-
-		case <-ticker.C:
-		}
-		break
-	}
-
-	return handler()
 }

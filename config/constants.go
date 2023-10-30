@@ -6,9 +6,6 @@ import "time"
 // should be sufficiently large to prevent fragmentation.
 const BufferSize = 1500
 
-// SessionIDSize is the number of random bytes encoded in a session ID.
-const SessionIDSize = 16
-
 // AgentCancelWait is the timeout for agents to cancel
 const AgentCancelWait = 3 * time.Second
 
@@ -21,17 +18,14 @@ const WsHandshakeTimeout = 10 * time.Second
 // WsCloseTimeout is the timeout of a WebSocket close message.
 const WsCloseTimeout = 3 * time.Second
 
-// WsKeepliveInterval is used for checking websocket connection loss.
-const WsKeepliveInterval = 3 * time.Second
-
 // NetDialTimeout is the timeout for agents connecting to the destination
 const NetDialTimeout = 5 * time.Second
 
-// AcceptRetryWait is the time to wait before retrying a failed Accept().
-const AcceptRetryWait = 100 * time.Millisecond
-
-// UdpSessionTimeout is the timeout used to kill idle UDP session.
-const UdpSessionTimeout = 300 * time.Second
-
 // GoroutinePoolSize is the size for initializing an ants.Pool.
 const GoroutinePoolSize = 10000
+
+// SmuxSessionKeepAliveInterval is how often a mux session peer to send a NOP command to the remote
+const SmuxSessionKeepAliveInterval = 5 * time.Second
+
+// SmuxSessionKeepAliveTimeout is how long a mux session will be closed if no data has arrived
+const SmuxSessionKeepAliveTimeout = 10 * time.Second

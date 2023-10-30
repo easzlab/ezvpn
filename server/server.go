@@ -21,7 +21,6 @@ func Start() error {
 	e.Use(middleware.Recover())
 
 	e.GET("/register/:key", GetRegister)
-	e.GET("/session/:key", GetSession)
 
 	s := http.Server{
 		Addr:    config.SERVER.ControlAddress,

@@ -14,6 +14,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/panjf2000/ants/v2"
+	"github.com/xtaci/smux"
 )
 
 // Upgrader is the websocket upgrader.
@@ -70,6 +71,7 @@ func WebSocket(c echo.Context, handler func(ws *websocket.Conn) error) error {
 	return nil
 }
 
+// GetRegister
 func GetRegister(c echo.Context) error {
 	key := c.Param("key")
 
@@ -79,7 +81,7 @@ func GetRegister(c echo.Context) error {
 			if c.Request().TLS == nil { // TLS is disabled
 				log.Printf("agent %s@%s registered", agent.Name, c.RealIP())
 				return WebSocket(c, func(ws *websocket.Conn) error {
-					return readFromWS(ws)
+					return startSmuxSessionFromWS(ws)
 				})
 			} else { // TLS is enabled
 				if len(c.Request().TLS.PeerCertificates) > 0 {
@@ -88,7 +90,7 @@ func GetRegister(c echo.Context) error {
 						if cn == approved_cn {
 							log.Printf("agent %s@%s registered", agent.Name, c.RealIP())
 							return WebSocket(c, func(ws *websocket.Conn) error {
-								return readFromWS(ws)
+								return startSmuxSessionFromWS(ws)
 							})
 						}
 					}
@@ -100,48 +102,37 @@ func GetRegister(c echo.Context) error {
 	return Error(c, http.StatusUnauthorized, err)
 }
 
-func GetSession(c echo.Context) error {
-	key := c.Param("key")
+// startSmuxSessionFromWS starts smux session from underlying websocket, and tunnel the accepted stream to the socks server
+func startSmuxSessionFromWS(ws *websocket.Conn) error {
+	// Setup server side of smux
+	cfg := smux.DefaultConfig()
+	cfg.KeepAliveInterval = config.SmuxSessionKeepAliveInterval
+	cfg.KeepAliveTimeout = config.SmuxSessionKeepAliveTimeout
 
-	for _, agent := range config.AGENTS.Agents {
-		// check if the key is valid
-		if key == agent.AuthKey {
-			if c.Request().TLS == nil { // TLS is disabled
-				log.Printf("agent %s@%s session established", agent.Name, c.RealIP())
-				return WebSocket(c, func(ws *websocket.Conn) error {
-					return tunnel(ws)
-				})
-			} else { // TLS is enabled
-				if len(c.Request().TLS.PeerCertificates) > 0 {
-					cn := c.Request().TLS.PeerCertificates[0].Subject.CommonName
-					for _, approved_cn := range agent.ApprovedCNs {
-						if cn == approved_cn {
-							log.Printf("agent %s@%s session established", agent.Name, c.RealIP())
-							return WebSocket(c, func(ws *websocket.Conn) error {
-								return tunnel(ws)
-							})
-						}
-					}
-				}
-			}
-		}
+	session, err := smux.Server(ws.UnderlyingConn(), cfg)
+	if err != nil {
+		return err
 	}
+	defer session.Close()
 
-	err := fmt.Errorf("failed to establish session: invalid auth key: %s", key)
-	return Error(c, http.StatusUnauthorized, err)
-}
-
-// readFromWS reads from ws continuously, the agent side will send the ws ping message regularly
-func readFromWS(ws *websocket.Conn) error {
 	for {
-		_, _, err := ws.ReadMessage()
+		// Accept a stream
+		stream, err := session.AcceptStream()
 		if err != nil {
 			return err
 		}
+		defer stream.Close()
+
+		go func() {
+			if err := tunnel(stream); err != nil {
+				log.Println(err)
+			}
+		}()
 	}
 }
 
-func tunnel(ws *websocket.Conn) error {
+// tunnel tunnels stream to the socks server
+func tunnel(stream *smux.Stream) error {
 	// connection to the socks5 server.
 	conn, err := net.DialTimeout("tcp", config.SERVER.SocksServer, config.NetDialTimeout)
 	if err != nil {
@@ -151,47 +142,17 @@ func tunnel(ws *websocket.Conn) error {
 
 	errCh := make(chan error, 2)
 
-	// uplink: Agent --ws--> Server --conn--> (socks server)
+	// uplink: Agent --smux stream--> Server --conn--> (socks server)
 	uplink := func() {
-		func(c chan error) {
-			buf := make([]byte, config.BufferSize)
-
-			for {
-				_, r, err := ws.NextReader()
-				if err != nil {
-					c <- err
-					return
-				}
-
-				if _, err := io.CopyBuffer(conn, r, buf); err != nil {
-					c <- err
-					return
-				}
-			}
-		}(errCh)
-
+		buf := make([]byte, config.BufferSize)
+		proxy(conn, stream, buf, errCh)
 		wg.Done()
 	}
 
-	// Downlink: Agent <--ws-- Server <--conn--(socks server)
+	// Downlink: Agent <--smux stream-- Server <--conn--(socks server)
 	downlink := func() {
-		func(c chan error) {
-			buf := make([]byte, config.BufferSize)
-
-			for {
-				n, err := conn.Read(buf)
-				if err != nil {
-					c <- err
-					return
-				}
-
-				if err := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); err != nil {
-					c <- err
-					return
-				}
-			}
-		}(errCh)
-
+		buf := make([]byte, config.BufferSize)
+		proxy(stream, conn, buf, errCh)
 		wg.Done()
 	}
 
@@ -211,12 +172,7 @@ func tunnel(ws *websocket.Conn) error {
 			}
 
 			if errors.Is(err, net.ErrClosed) {
-				log.Println("Canceled. Finishing session")
-				return nil
-			}
-
-			if websocket.IsCloseError(err, websocket.CloseNormalClosure) {
-				log.Println("Tunnel closed. Finishing session")
+				log.Println("Finishing session")
 				return nil
 			}
 
@@ -228,4 +184,12 @@ func tunnel(ws *websocket.Conn) error {
 
 	return nil
 
+}
+
+// proxy is used to suffle data from src to destination, and sends errors
+// down a dedicated channel
+func proxy(dst net.Conn, src net.Conn, buf []byte, errCh chan error) {
+	_, err := io.CopyBuffer(dst, src, buf)
+	dst.Close()
+	errCh <- err
 }
