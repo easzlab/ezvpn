@@ -9,7 +9,6 @@ WorkingDirectory=/opt/ezvpn/server
 ExecStart=/opt/ezvpn/server/ezvpn-server \
   --tls=true \
   --listen=":8443" \
-  --socks5=":6116" \
   --config=/opt/ezvpn/server/config/allowed-agents.yml \
   --ca=ca.pem \
   --cert=server.pem \

@@ -10,14 +10,15 @@ import (
 
 // Server is the ezvpn server configuration.
 type Server struct {
-	EnableTLS      bool
-	EnablePprof    bool
-	ControlAddress string
-	ConfigFile     string
-	CaFile         string
-	CertFile       string
-	KeyFile        string
-	SocksServer    string
+	EnableTLS         bool
+	EnablePprof       bool
+	EnableInlineSocks bool
+	ControlAddress    string
+	ConfigFile        string
+	CaFile            string
+	CertFile          string
+	KeyFile           string
+	SocksServer       string
 }
 
 // AllowedAgents is the configuration for the allowed agents.

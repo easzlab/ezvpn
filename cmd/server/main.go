@@ -16,12 +16,13 @@ func main() {
 	s := config.Server{}
 	flag.BoolVar(&s.EnableTLS, "tls", true, "To enable tls between agent and server or not")
 	flag.BoolVar(&s.EnablePprof, "pprof", false, "To enable pprof or not")
+	flag.BoolVar(&s.EnableInlineSocks, "withsocks", true, "To enable the inline socks server or not")
 	flag.StringVar(&s.ControlAddress, "listen", ":8443", "Specify the control address")
 	flag.StringVar(&s.ConfigFile, "config", "./config/allowed-agents.yml", "Specify the config file")
 	flag.StringVar(&s.CaFile, "ca", "./ca.pem", "Specify the trusted ca file")
 	flag.StringVar(&s.CertFile, "cert", "./server.pem", "Specify the server cert file")
 	flag.StringVar(&s.KeyFile, "key", "./server-key.pem", "Specify the server key file")
-	flag.StringVar(&s.SocksServer, "socks5", "0.0.0.0:6116", "Specify the socks server address")
+	flag.StringVar(&s.SocksServer, "socksaddr", "127.0.0.1:6116", "Specify the socks server address")
 	flag.Parse()
 
 	// load configuration
@@ -33,8 +34,10 @@ func main() {
 	}
 
 	// run socks server
-	socksServer := socks.Server{ListenAddr: s.SocksServer}
-	go socksServer.Run()
+	if s.EnableInlineSocks {
+		socksServer := socks.Server{ListenAddr: s.SocksServer}
+		go socksServer.Run()
+	}
 
 	// run ezvpn server
 	if err := server.Start(); err != nil {
