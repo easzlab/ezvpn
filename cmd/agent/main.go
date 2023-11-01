@@ -24,8 +24,9 @@ import (
 func main() {
 	a := agent.Agent{}
 	flag.StringVar(&a.AuthKey, "auth", "xxx", "Specify the authentication key")
-	flag.BoolVar(&a.EnableTLS, "tls", true, "To enable tls between agent and server or not")
-	flag.BoolVar(&a.EnablePprof, "pprof", false, "To enable pprof or not")
+	flag.BoolVar(&a.EnableTLS, "tls", true, "enable tls between agent and server")
+	flag.BoolVar(&a.EnablePprof, "pprof", false, "enable pprof")
+	flag.BoolVar(&a.ShowVersion, "version", false, "show version of the agent")
 	flag.StringVar(&a.CaFile, "ca", "ca.pem", "Specify the trusted ca file")
 	flag.StringVar(&a.CertFile, "cert", "agent.pem", "Specify the agent cert file")
 	flag.StringVar(&a.KeyFile, "key", "agent-key.pem", "Specify the agent key file")
@@ -33,6 +34,11 @@ func main() {
 	flag.StringVar(&a.LocalAddress, "local", ":16116", "Specify the local address")
 	flag.StringVar(&a.ServerAddress, "server", "127.0.0.1:8443", "Specify the server address")
 	flag.Parse()
+
+	if a.ShowVersion {
+		fmt.Println(config.FullVersion())
+		os.Exit(0)
+	}
 
 	if a.EnablePprof {
 		go http.ListenAndServe("0.0.0.0:6061", nil)

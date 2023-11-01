@@ -29,6 +29,7 @@ type Agent struct {
 	ServerAddress string
 	EnableTLS     bool
 	EnablePprof   bool
+	ShowVersion   bool
 	CaFile        string
 	CertFile      string
 	KeyFile       string

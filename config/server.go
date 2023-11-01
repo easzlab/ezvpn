@@ -13,6 +13,7 @@ type Server struct {
 	EnableTLS         bool
 	EnablePprof       bool
 	EnableInlineSocks bool
+	ShowVersion       bool
 	ControlAddress    string
 	ConfigFile        string
 	CaFile            string
