@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -19,6 +18,8 @@ import (
 
 	"github.com/easzlab/ezvpn/agent"
 	"github.com/easzlab/ezvpn/config"
+	"github.com/easzlab/ezvpn/logger"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -31,6 +32,8 @@ func main() {
 	flag.StringVar(&a.CertFile, "cert", "agent.pem", "Specify the agent cert file")
 	flag.StringVar(&a.KeyFile, "key", "agent-key.pem", "Specify the agent key file")
 	flag.StringVar(&a.LockFile, "lock", "agent.lock", "Specify the agent lock file")
+	flag.StringVar(&a.LogFile, "logfile", "agent.log", "Specify the agent log file")
+	flag.StringVar(&a.LogLevel, "loglvl", "debug", "Specify the agent log level")
 	flag.StringVar(&a.LocalAddress, "local", ":16116", "Specify the local address")
 	flag.StringVar(&a.ServerAddress, "server", "127.0.0.1:8443", "Specify the server address")
 	flag.Parse()
@@ -40,12 +43,14 @@ func main() {
 		os.Exit(0)
 	}
 
+	logger.InitAgentLogger(a.LogFile, a.LogLevel)
+
 	if a.EnablePprof {
 		go http.ListenAndServe("0.0.0.0:6061", nil)
 	}
 
 	if err := run(a); err != nil {
-		log.Printf("error: %s", err)
+		logger.Agent.Warn("agent run error", zap.String("reason", err.Error()))
 		os.Exit(1)
 	}
 }
@@ -64,13 +69,14 @@ func run(a agent.Agent) error {
 	defer func() {
 		// 程序退出时删除锁文件
 		os.Remove(a.LockFile)
+		os.Remove(a.LogFile)
 	}()
 
 	ctx := withSignalCancel(context.Background())
 	err := a.Start(ctx)
 
 	if errors.Is(err, context.Canceled) {
-		log.Printf("the agent proc is canceled, waiting for it to stop...")
+		logger.Agent.Warn("agent canceled, waiting for it to stop...", zap.String("reason", "user canceled"))
 		time.Sleep(config.AgentCancelWait)
 		return nil
 	}
@@ -107,7 +113,6 @@ func checkProcessExists(lockFile string) error {
 
 	// 解析文件内容
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	//log.Printf("pid: %d", pid)
 	if err != nil {
 		return err
 	}

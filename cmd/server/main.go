@@ -8,8 +8,10 @@ import (
 	"os"
 
 	"github.com/easzlab/ezvpn/config"
+	"github.com/easzlab/ezvpn/logger"
 	"github.com/easzlab/ezvpn/server"
 	"github.com/easzlab/ezvpn/socks"
+	"go.uber.org/zap"
 )
 
 func main() {
@@ -19,10 +21,12 @@ func main() {
 	flag.BoolVar(&s.EnableInlineSocks, "withsocks", true, "enable the inline socks server")
 	flag.BoolVar(&s.ShowVersion, "version", false, "version of the server")
 	flag.StringVar(&s.ControlAddress, "listen", ":8443", "control address")
-	flag.StringVar(&s.ConfigFile, "config", "./config/allowed-agents.yml", "allowed-agents config file")
-	flag.StringVar(&s.CaFile, "ca", "./ca.pem", "trusted ca")
-	flag.StringVar(&s.CertFile, "cert", "./server.pem", "server cert file")
-	flag.StringVar(&s.KeyFile, "key", "./server-key.pem", "server key file")
+	flag.StringVar(&s.ConfigFile, "config", "config/allowed-agents.yml", "allowed-agents config file")
+	flag.StringVar(&s.CaFile, "ca", "ca.pem", "trusted ca")
+	flag.StringVar(&s.CertFile, "cert", "server.pem", "server cert file")
+	flag.StringVar(&s.KeyFile, "key", "server-key.pem", "server key file")
+	flag.StringVar(&s.LogFile, "logfile", "logs/server.log", "server log file")
+	flag.StringVar(&s.LogLevel, "loglvl", "debug", "server log level")
 	flag.StringVar(&s.SocksServer, "socksaddr", "127.0.0.1:6116", "socks server address")
 	flag.Parse()
 
@@ -30,6 +34,9 @@ func main() {
 		fmt.Println(config.FullVersion())
 		os.Exit(0)
 	}
+
+	logger.InitServerLogger(s.LogFile, s.LogLevel)
+	logger.InitEchoLogger("logs/echo.log", s.LogLevel)
 
 	// load configuration
 	config.SERVER = s
@@ -47,7 +54,7 @@ func main() {
 
 	// run ezvpn server
 	if err := server.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, "error:", err)
+		logger.Server.Error("server error", zap.String("reason", err.Error()))
 		os.Exit(1)
 	}
 }

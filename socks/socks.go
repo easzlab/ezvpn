@@ -3,8 +3,11 @@ package socks
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
+
+	"github.com/easzlab/ezvpn/config"
+	"github.com/easzlab/ezvpn/logger"
+	"go.uber.org/zap"
 )
 
 const (
@@ -37,7 +40,11 @@ func (s *Server) Run() error {
 	if err != nil {
 		return err
 	}
-	log.Println("socks server running on: ", s.ListenAddr)
+	logger.Server.Debug("running socks server",
+		zap.String("reason", ""),
+		zap.String("remote", ""),
+		zap.String("version", config.FullVersion()),
+		zap.String("address", s.ListenAddr))
 
 	for {
 		c, err := l.Accept()
@@ -67,7 +74,10 @@ func (s *Server) HandleRequest(conn net.Conn) error {
 	cli := conn.RemoteAddr().String()
 
 	if err := r.ParseRequest(conn); err != nil {
-		log.Printf("failed to parse request, error: %s, client: %s, target: %s", err.Error(), cli, "")
+		logger.Server.Warn("failed to parse request",
+			zap.String("reason", err.Error()),
+			zap.String("remote", cli),
+			zap.String("target", ""))
 		SendReply(conn, addrTypeNotSupported, nil)
 		return err
 	}
@@ -80,7 +90,10 @@ func (s *Server) HandleRequest(conn net.Conn) error {
 		return s.handleConnect(ctx, conn, r)
 	default:
 		SendReply(conn, commandNotSupported, nil)
-		log.Printf("unsupported command, error: , client: %s, target: %s", cli, r.DestAddr.String())
+		logger.Server.Warn("unsupported command",
+			zap.String("reason", ""),
+			zap.String("remote", cli),
+			zap.String("target", r.DestAddr.String()))
 		return fmt.Errorf("unsupported command: %v", r.Command)
 	}
 }

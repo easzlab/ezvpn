@@ -4,8 +4,10 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"log"
 	"net"
+
+	"github.com/easzlab/ezvpn/logger"
+	"go.uber.org/zap"
 )
 
 func (s *Server) HandleAuth(conn net.Conn) error {
@@ -14,13 +16,13 @@ func (s *Server) HandleAuth(conn net.Conn) error {
 	// auth-check
 	reply, err := authReply(conn)
 	if err != nil {
-		log.Printf("auth failed from %s, error: %s", cli, err.Error())
+		logger.Server.Warn("auth failed ", zap.String("reason", err.Error()), zap.String("remote", cli))
 		return err
 	}
 
 	if n, e := conn.Write([]byte{0x05, reply}); e != nil || n != 2 {
 		senderr := fmt.Errorf("failed to send method selection reply: %v", e)
-		log.Printf("auth failed from %s, error: %s", cli, senderr.Error())
+		logger.Server.Warn("auth failed ", zap.String("reason", senderr.Error()), zap.String("remote", cli))
 		return senderr
 	}
 

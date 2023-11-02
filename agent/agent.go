@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -15,13 +14,28 @@ import (
 	"time"
 
 	"github.com/easzlab/ezvpn/config"
+	"github.com/easzlab/ezvpn/logger"
 	"github.com/gorilla/websocket"
 	"github.com/panjf2000/ants/v2"
 	"github.com/xtaci/smux"
+	"go.uber.org/zap"
 )
 
 // dialer is the websocket dialer used to connect to the server.
 var dialer = websocket.DefaultDialer
+
+// wg and ants.Pool is used to manage goroutines.
+var wg sync.WaitGroup
+var pool *ants.Pool
+
+// init initializes ants.Pool.
+func init() {
+	var err error
+	pool, err = ants.NewPool(config.GoroutinePoolSize)
+	if err != nil {
+		logger.Agent.Fatal("error init ants pool", zap.String("reason", err.Error()))
+	}
+}
 
 // Agent tunnels local socks stream to the server.
 type Agent struct {
@@ -35,19 +49,8 @@ type Agent struct {
 	KeyFile       string
 	LocalAddress  string
 	LockFile      string
-}
-
-// wg and ants.Pool is used to manage goroutines.
-var wg sync.WaitGroup
-var pool *ants.Pool
-
-// init initializes ants.Pool.
-func init() {
-	var err error
-	pool, err = ants.NewPool(config.GoroutinePoolSize)
-	if err != nil {
-		log.Fatal(err)
-	}
+	LogFile       string
+	LogLevel      string
 }
 
 // Start starts
@@ -88,7 +91,7 @@ func (agent *Agent) Start(ctx context.Context) error {
 				c <- err
 				return
 			}
-			log.Printf("Agent error %q - recovering...", err)
+			logger.Agent.Warn("agent recovering...", zap.String("reason", err.Error()))
 			<-retry.C
 		}
 	}(errCh)
@@ -135,7 +138,7 @@ func (agent *Agent) register(ctx context.Context) error {
 	ws, resp, err := dialer.DialContext(ctx, url, header)
 	if err != nil {
 		if err == websocket.ErrBadHandshake {
-			log.Printf("handshake failed with status %d", resp.StatusCode)
+			logger.Agent.Warn("handshake failed", zap.String("reason", err.Error()), zap.Int("status", resp.StatusCode))
 		}
 		return err
 	}
@@ -153,7 +156,9 @@ func (agent *Agent) register(ctx context.Context) error {
 	}
 	defer ln.Close()
 
-	log.Printf("Listening on: %s", agent.LocalAddress)
+	logger.Agent.Info("listen successfully",
+		zap.String("reason", ""),
+		zap.String("address", agent.LocalAddress))
 
 	// 3. Setup client side of smux
 	cfg := smux.DefaultConfig()
@@ -195,12 +200,17 @@ func (agent *Agent) register(ctx context.Context) error {
 			go func() {
 				stream, err := session.OpenStream()
 				if err != nil {
-					log.Printf("error open a new stream:%s", err.Error())
+					logger.Agent.Warn("error open a new stream",
+						zap.String("reason", err.Error()),
+						zap.String("remote", ""))
 					return
 				}
 				defer stream.Close()
 				if err := agent.tunnel(ctx, conn, stream); err != nil {
-					log.Printf("Tunneling error: %s", err)
+					logger.Agent.Warn("tunneling error",
+						zap.String("reason", err.Error()),
+						zap.String("remote", stream.RemoteAddr().String()),
+						zap.Int("id", int(stream.ID())))
 				}
 			}()
 		}
@@ -217,7 +227,10 @@ func (agent *Agent) tunnel(ctx context.Context, conn net.Conn, stream *smux.Stre
 	defer conn.Close()
 	defer stream.Close()
 
-	log.Printf("Tunneling local connection from %s", conn.RemoteAddr())
+	logger.Agent.Info("start tunneling",
+		zap.String("reason", ""),
+		zap.String("remote", stream.RemoteAddr().String()),
+		zap.Int("id", int(stream.ID())))
 
 	// Cancelable.
 	unhookCancel := hookCancel(ctx, func() {
@@ -253,21 +266,33 @@ func (agent *Agent) tunnel(ctx context.Context, conn net.Conn, stream *smux.Stre
 		err := <-errCh
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				log.Printf("Client %s closed normally. Closing connection.", conn.RemoteAddr())
+				logger.Agent.Info("tunnel finished",
+					zap.String("reason", err.Error()),
+					zap.String("remote", stream.RemoteAddr().String()),
+					zap.Int("id", int(stream.ID())))
 				return nil
 			}
 
 			if errors.Is(err, net.ErrClosed) {
-				log.Printf("Canceled. Closing connection %s", conn.RemoteAddr())
+				logger.Agent.Info("tunnel closed",
+					zap.String("reason", err.Error()),
+					zap.String("remote", stream.RemoteAddr().String()),
+					zap.Int("id", int(stream.ID())))
 				return nil
 			}
 
 			if errors.Is(err, io.ErrClosedPipe) {
-				log.Printf("Closed by remote peer. Closing connection %s", conn.RemoteAddr())
+				logger.Agent.Info("tunnel closed",
+					zap.String("reason", err.Error()),
+					zap.String("remote", stream.RemoteAddr().String()),
+					zap.Int("id", int(stream.ID())))
 				return nil
 			}
 
-			log.Printf("Error %q. Killing session %s.", err, conn.RemoteAddr())
+			logger.Agent.Warn("tunnel killed",
+				zap.String("reason", err.Error()),
+				zap.String("remote", stream.RemoteAddr().String()),
+				zap.Int("id", int(stream.ID())))
 
 			return err
 		}

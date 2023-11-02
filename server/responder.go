@@ -4,17 +4,18 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/easzlab/ezvpn/config"
+	"github.com/easzlab/ezvpn/logger"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/panjf2000/ants/v2"
 	"github.com/xtaci/smux"
+	"go.uber.org/zap"
 )
 
 // Upgrader is the websocket upgrader.
@@ -29,14 +30,18 @@ func init() {
 	var err error
 	pool, err = ants.NewPool(config.GoroutinePoolSize)
 	if err != nil {
-		log.Fatal(err)
+		logger.Server.Fatal("error init ants pool", zap.String("reason", err.Error()))
 	}
 }
 
 // Error responds to client with an error. The error is logged and translated
 // to proper HTTP status response.
 func Error(c echo.Context, status int, err error) error {
-	c.Logger().Error(err)
+	logger.Server.Warn("request error",
+		zap.String("reason", err.Error()),
+		zap.String("remote", c.RealIP()),
+		zap.Int("status", status))
+
 	return c.JSON(status, map[string]string{"error": err.Error()})
 }
 
@@ -51,8 +56,6 @@ func WebSocket(c echo.Context, handler func(ws *websocket.Conn) error) error {
 		var closeMessage []byte
 
 		if err := handler(ws); err != nil {
-			c.Logger().Error(err)
-
 			closeMessage = websocket.FormatCloseMessage(
 				websocket.ClosePolicyViolation, "error: "+err.Error(),
 			)
@@ -79,7 +82,10 @@ func GetRegister(c echo.Context) error {
 		// check if the key is valid
 		if key == agent.AuthKey {
 			if c.Request().TLS == nil { // TLS is disabled
-				log.Printf("agent %s@%s registered", agent.Name, c.RealIP())
+				logger.Server.Debug("agent registered",
+					zap.String("reason", ""),
+					zap.String("remote", c.RealIP()),
+					zap.String("name", agent.Name))
 				return WebSocket(c, func(ws *websocket.Conn) error {
 					return startSmuxSessionFromWS(ws)
 				})
@@ -88,7 +94,10 @@ func GetRegister(c echo.Context) error {
 					cn := c.Request().TLS.PeerCertificates[0].Subject.CommonName
 					for _, approved_cn := range agent.ApprovedCNs {
 						if cn == approved_cn {
-							log.Printf("agent %s@%s registered", agent.Name, c.RealIP())
+							logger.Server.Debug("agent registered",
+								zap.String("reason", ""),
+								zap.String("remote", c.RealIP()),
+								zap.String("name", agent.Name))
 							return WebSocket(c, func(ws *websocket.Conn) error {
 								return startSmuxSessionFromWS(ws)
 							})
@@ -111,6 +120,9 @@ func startSmuxSessionFromWS(ws *websocket.Conn) error {
 
 	session, err := smux.Server(ws.UnderlyingConn(), cfg)
 	if err != nil {
+		logger.Server.Warn("failed to setup smux session",
+			zap.String("reason", err.Error()),
+			zap.String("remote", ws.RemoteAddr().String()))
 		return err
 	}
 	defer session.Close()
@@ -119,23 +131,29 @@ func startSmuxSessionFromWS(ws *websocket.Conn) error {
 		// Accept a stream
 		stream, err := session.AcceptStream()
 		if err != nil {
+			logger.Server.Warn("failed to accept smux stream",
+				zap.String("reason", err.Error()),
+				zap.String("remote", ws.RemoteAddr().String()))
 			return err
 		}
 		defer stream.Close()
 
-		go func() {
-			if err := tunnel(stream); err != nil {
-				log.Println(err)
-			}
-		}()
+		go tunnel(stream)
 	}
 }
 
 // tunnel tunnels stream to the socks server
 func tunnel(stream *smux.Stream) error {
+
+	defer stream.Close()
+
 	// connection to the socks5 server.
 	conn, err := net.DialTimeout("tcp", config.SERVER.SocksServer, config.NetDialTimeout)
 	if err != nil {
+		logger.Server.Warn("failed to connect the socks server",
+			zap.String("reason", err.Error()),
+			zap.String("remote", stream.RemoteAddr().String()),
+			zap.Int("id", int(stream.ID())))
 		return err
 	}
 	defer conn.Close()
@@ -167,17 +185,25 @@ func tunnel(stream *smux.Stream) error {
 		err := <-errCh
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				log.Println("Destination closed. Finishing session")
+				logger.Server.Debug("tunnel finished",
+					zap.String("reason", err.Error()),
+					zap.String("remote", stream.RemoteAddr().String()),
+					zap.Int("id", int(stream.ID())))
 				return nil
 			}
 
 			if errors.Is(err, net.ErrClosed) {
-				log.Println("Finishing session")
+				logger.Server.Debug("tunnel closed",
+					zap.String("reason", err.Error()),
+					zap.String("remote", stream.RemoteAddr().String()),
+					zap.Int("id", int(stream.ID())))
 				return nil
 			}
 
-			log.Printf("Error %q. Killing session", err)
-
+			logger.Server.Warn("tunnel killed",
+				zap.String("reason", err.Error()),
+				zap.String("remote", stream.RemoteAddr().String()),
+				zap.Int("id", int(stream.ID())))
 			return err
 		}
 	}

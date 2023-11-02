@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net"
 
 	"github.com/easzlab/ezvpn/config"
+	"github.com/easzlab/ezvpn/logger"
+	"go.uber.org/zap"
 )
 
 // CMD CONNECT
@@ -19,7 +20,10 @@ func (s *Server) handleConnect(ctx context.Context, conn net.Conn, req *Request)
 	if err != nil {
 		SendReply(conn, hostUnreachable, nil)
 		errcon := fmt.Errorf("connect to target failed: %v", err)
-		log.Printf("target unreachable, error: %s, client: %s, target: %s", errcon.Error(), cli, req.DestAddr.String())
+		logger.Server.Warn("target unreachable",
+			zap.String("reason", errcon.Error()),
+			zap.String("remote", cli),
+			zap.String("target", req.DestAddr.String()))
 		return errcon
 	}
 	defer target.Close()
@@ -28,15 +32,26 @@ func (s *Server) handleConnect(ctx context.Context, conn net.Conn, req *Request)
 	local, ok := target.LocalAddr().(*net.TCPAddr)
 	if !ok {
 		msg := fmt.Sprintf("expect *net.TCPAddr, not %t", target.LocalAddr())
-		log.Printf("unknown type, error: %s, client: %s, target: %s", msg, cli, req.DestAddr.String())
+		logger.Server.Warn("unknown addr type",
+			zap.String("reason", msg),
+			zap.String("remote", cli),
+			zap.String("target", req.DestAddr.String()))
 	}
 	bind := AddrSpec{IP: local.IP, Port: local.Port}
 	if err := SendReply(conn, successReply, &bind); err != nil {
-		log.Printf("failed to send reply, error: %s, client: %s, target: %s", err.Error(), cli, req.DestAddr.String())
+		logger.Server.Warn("failed to send reply",
+			zap.String("reason", err.Error()),
+			zap.String("remote", cli),
+			zap.String("target", req.DestAddr.String()))
 		return fmt.Errorf("failed to send reply: %v", err)
 	}
 
 	// Start proxying
+	logger.Server.Debug("start proxying",
+		zap.String("reason", ""),
+		zap.String("remote", cli),
+		zap.String("target", req.DestAddr.String()))
+
 	errCh := make(chan error, 2)
 	go proxy(target, conn, errCh)
 	go proxy(conn, target, errCh)

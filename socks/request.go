@@ -3,9 +3,11 @@ package socks
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strconv"
+
+	"github.com/easzlab/ezvpn/logger"
+	"go.uber.org/zap"
 )
 
 // AddrSpec is used to return the target AddrSpec
@@ -151,7 +153,10 @@ func SendReply(w io.Writer, rep uint8, addr *AddrSpec) error {
 
 	default:
 		err := fmt.Errorf("failed to format address: %v", addr)
-		log.Printf("failed to send reply, error: %s, client: , target: ", err.Error())
+		logger.Server.Warn("failed to send reply",
+			zap.String("reason", err.Error()),
+			zap.String("remote", ""),
+			zap.String("target", ""))
 		return err
 	}
 
@@ -168,7 +173,10 @@ func SendReply(w io.Writer, rep uint8, addr *AddrSpec) error {
 	// Send the message
 	_, err := w.Write(reply)
 	if err != nil {
-		log.Printf("failed to send reply, error: %s, client: , target: ", err.Error())
+		logger.Server.Warn("failed to send reply",
+			zap.String("reason", err.Error()),
+			zap.String("remote", ""),
+			zap.String("target", ""))
 	}
 	return err
 }
