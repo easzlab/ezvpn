@@ -30,6 +30,8 @@ GOOS=darwin GOARCH=amd64 CGO=0 go build -o ezvpn-server cmd/server/main.go
 GOOS=linux GOARCH=amd64 CGO=0 go build -o ezvpn-agent cmd/agent/main.go
 # 编译 ezvpn-server
 GOOS=linux GOARCH=amd64 CGO=0 go build -o ezvpn-server cmd/server/main.go
+# 静态编译
+CGO_ENABLED=0 go build -ldflags='-w -s -extldflags -static' -o ezvpn-server cmd/server/main.go
 ```
 
 3. windows

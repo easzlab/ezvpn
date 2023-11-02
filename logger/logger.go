@@ -42,7 +42,7 @@ func newLogger(file, level string) (*zap.Logger, error) {
 
 	cfg := zap.NewProductionConfig()
 	cfg.OutputPaths = []string{}
-	cfg.OutputPaths = append(cfg.OutputPaths, "stdout")
+	//cfg.OutputPaths = append(cfg.OutputPaths, "stdout")
 	cfg.OutputPaths = append(cfg.OutputPaths, file)
 	cfg.Encoding = "console" // "json" or "console"
 	cfg.EncoderConfig = enc

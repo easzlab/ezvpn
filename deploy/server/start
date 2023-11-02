@@ -21,7 +21,7 @@ function logger() {
 }
 
 function start() {
-  mkdir -p /opt/ezvpn/server/config
+  mkdir -p /opt/ezvpn/server/config /opt/ezvpn/server/logs
   logger debug "copy binary, certs, config and service file..."
   cp -f *.pem ezvpn-server /opt/ezvpn/server/
   cp -f config/allowed-agents.yml /opt/ezvpn/server/config/
@@ -32,6 +32,31 @@ function start() {
   systemctl daemon-reload && systemctl restart ezvpn-server && sleep 1
 }
 
+function log_rotate(){
+  [[ -e /usr/sbin/logrotate ]] || { logger warn "logrotate not found"; return 0; }
+  logger debug "install logrotate config..."
+  cat > /etc/logrotate.d/ezvpn-server << EOF
+/opt/ezvpn/server/logs/*.log {
+        su root root
+        daily
+        missingok
+        copytruncate
+        rotate 7
+        nocompress
+        notifempty
+        sharedscripts
+        size=500M
+        postrotate
+        endscript
+}
+EOF
+
+  logger debug "set logrotate crontab..."
+  echo "3 1 * * * root /usr/sbin/logrotate /etc/logrotate.d/ezvpn-server -f" > /etc/cron.d/ezvpn-server
+}
+
 BASE=$(cd "$(dirname "$0")" || exit 1; pwd)
 cd "$BASE" || exit 1
 start
+log_rotate
+logger info "install success"
