@@ -206,12 +206,8 @@ func (agent *Agent) register(ctx context.Context) error {
 					return
 				}
 				defer stream.Close()
-				if err := agent.tunnel(ctx, conn, stream); err != nil {
-					logger.Agent.Warn("tunneling error",
-						zap.String("reason", err.Error()),
-						zap.String("remote", stream.RemoteAddr().String()),
-						zap.Int("id", int(stream.ID())))
-				}
+
+				agent.tunnel(ctx, conn, stream)
 			}()
 		}
 	}(errCh)

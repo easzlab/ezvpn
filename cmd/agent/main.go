@@ -43,6 +43,9 @@ func main() {
 		os.Exit(0)
 	}
 
+	// 清理旧的日志文件
+	os.Remove(a.LogFile)
+
 	logger.InitAgentLogger(a.LogFile, a.LogLevel)
 
 	if a.EnablePprof {
@@ -69,7 +72,6 @@ func run(a agent.Agent) error {
 	defer func() {
 		// 程序退出时删除锁文件
 		os.Remove(a.LockFile)
-		os.Remove(a.LogFile)
 	}()
 
 	ctx := withSignalCancel(context.Background())
