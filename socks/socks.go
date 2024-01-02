@@ -95,12 +95,10 @@ func (s *Server) SocksService(conn net.Conn) error {
 func (s *Server) HandleRequest(conn net.Conn) error {
 	// Parse requests
 	r := &Request{}
-	cli := conn.RemoteAddr().String()
 
 	if err := r.ParseRequest(conn); err != nil {
 		logger.Server.Warn("failed to parse request",
 			zap.String("reason", err.Error()),
-			zap.String("remote", cli),
 			zap.String("target", ""))
 		SendReply(conn, addrTypeNotSupported, nil)
 		return err
@@ -116,7 +114,6 @@ func (s *Server) HandleRequest(conn net.Conn) error {
 		SendReply(conn, commandNotSupported, nil)
 		logger.Server.Warn("unsupported command",
 			zap.String("reason", ""),
-			zap.String("remote", cli),
 			zap.String("target", r.DestAddr.String()))
 		return fmt.Errorf("unsupported command: %v", r.Command)
 	}

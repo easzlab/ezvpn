@@ -61,12 +61,18 @@ func (r *Request) ParseRequest(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	remote, _ := conn.RemoteAddr().(*net.TCPAddr)
 
 	r.Version = 0x05
 	r.Command = header[1]
 	r.DestAddr = dest
-	r.RemoteAddr = &AddrSpec{IP: remote.IP, Port: remote.Port}
+
+	remote, ok := conn.RemoteAddr().(*net.TCPAddr)
+	if ok {
+		r.RemoteAddr = &AddrSpec{IP: remote.IP, Port: remote.Port}
+	} else {
+		// Not a TCP connection, may be using a unix socket
+		r.RemoteAddr = &AddrSpec{}
+	}
 
 	return nil
 }
