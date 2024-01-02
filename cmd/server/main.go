@@ -27,7 +27,7 @@ func main() {
 	flag.StringVar(&s.KeyFile, "key", "server-key.pem", "server key file")
 	flag.StringVar(&s.LogFile, "logfile", "logs/server.log", "server log file")
 	flag.StringVar(&s.LogLevel, "loglvl", "debug", "server log level")
-	flag.StringVar(&s.SocksServer, "socksaddr", "127.0.0.1:6116", "socks server address")
+	flag.StringVar(&s.SocksServer, "socksaddr", "socks.sock", "socks server，for inline socks using unix socket addr, for external socks using tcp addr")
 	flag.Parse()
 
 	if s.ShowVersion {

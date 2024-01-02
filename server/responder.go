@@ -147,8 +147,17 @@ func tunnel(stream *smux.Stream) error {
 
 	defer stream.Close()
 
+	var conn net.Conn
+	var err error
+
 	// connection to the socks5 server.
-	conn, err := net.DialTimeout("tcp", config.SERVER.SocksServer, config.NetDialTimeout)
+	if config.SERVER.EnableInlineSocks {
+		// use unix domain socket
+		conn, err = net.Dial("unix", config.SERVER.SocksServer)
+	} else {
+		// use tcp
+		conn, err = net.DialTimeout("tcp", config.SERVER.SocksServer, config.NetDialTimeout)
+	}
 	if err != nil {
 		logger.Server.Warn("failed to connect the socks server",
 			zap.String("reason", err.Error()),

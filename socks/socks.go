@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 
 	"github.com/easzlab/ezvpn/config"
 	"github.com/easzlab/ezvpn/logger"
@@ -36,19 +37,42 @@ type Server struct {
 }
 
 func (s *Server) Run() error {
-	l, err := net.Listen("tcp", s.ListenAddr)
+	var l net.Listener
+	var err error
+
+	if config.SERVER.EnableInlineSocks {
+		// use unix socket, first to remove old socket
+		if err = os.RemoveAll(s.ListenAddr); err != nil {
+			logger.Server.Warn("failed to remove old socket",
+				zap.String("reason", err.Error()),
+				zap.String("address", s.ListenAddr))
+			return err
+		}
+		l, err = net.Listen("unix", s.ListenAddr)
+	} else {
+		// use tcp
+		l, err = net.Listen("tcp", s.ListenAddr)
+	}
+
 	if err != nil {
+		logger.Server.Warn("failed to listen",
+			zap.String("reason", err.Error()),
+			zap.String("address", s.ListenAddr))
 		return err
 	}
+
+	defer l.Close()
+
 	logger.Server.Debug("running socks server",
 		zap.String("reason", ""),
-		zap.String("remote", ""),
 		zap.String("version", config.FullVersion()),
 		zap.String("address", s.ListenAddr))
 
 	for {
 		c, err := l.Accept()
 		if err != nil {
+			logger.Server.Warn("failed to accept connection",
+				zap.String("reason", err.Error()))
 			return err
 		}
 		// A goroutine for each client connection
