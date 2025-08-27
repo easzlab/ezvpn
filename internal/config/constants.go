@@ -13,7 +13,7 @@ const AgentCancelWait = 3 * time.Second
 const AgentRetryInterval = 15 * time.Second
 
 // AgentMaxRetry is the max retry times for a failed agent.Start()
-const AgentMaxRetry = 10
+const AgentMaxRetry = 30
 
 // WsHandshakeTimeout is the timeout for agents connecting to tunnel-servers
 const WsHandshakeTimeout = 10 * time.Second

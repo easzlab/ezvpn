@@ -35,11 +35,13 @@ func (a *Agent) Run() error {
 
 	go func() {
 		<-sigChan
-		fmt.Println("\nReceived interrupt signal, stopping download...")
+		fmt.Println("\nReceived interrupt signal, stopping agent...")
 		cancel()
 	}()
 
-	return a.Start(ctx)
+	err := a.Start(ctx)
+	a.CleanUp()
+	return err
 }
 
 // checkProcessExists 检查程序进程是否已经存在, 存在则返回nil, 不存在则返回错误

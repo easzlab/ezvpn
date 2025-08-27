@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/easzlab/ezvpn/internal/config"
@@ -37,10 +38,11 @@ type AgentConfig struct {
 
 // Agent tunnels local socks stream to the server.
 type Agent struct {
-	config *AgentConfig
-	pool   *ants.Pool
-	logger *zap.Logger
-	dialer *websocket.Dialer
+	config    *AgentConfig
+	pool      *ants.Pool
+	logger    *zap.Logger
+	dialer    *websocket.Dialer
+	cleanOnce sync.Once
 }
 
 func NewAgent(cfg *AgentConfig) (*Agent, error) {
@@ -90,21 +92,32 @@ func NewAgent(cfg *AgentConfig) (*Agent, error) {
 	}, nil
 }
 
+// CleanUp stops the agent, and do cleanup work
+func (a *Agent) CleanUp() {
+	a.cleanOnce.Do(func() {
+		a.logger.Info("starting clean up")
+
+		// 1. Stop accepting new tasks in the pool
+		a.pool.Release()
+
+		// 2. make sure the logger entries are flushed to disk
+		a.logger.Sync()
+	})
+}
+
 // Start starts the agent with retry mechanism
 func (a *Agent) Start(ctx context.Context) error {
 	var lastErr error
 
 	// Retry mechanism
 	for attempt := 1; attempt <= config.AgentMaxRetry; attempt++ {
-		err := a.register(ctx)
-		if err == nil {
-			return nil
+		lastErr = a.register(ctx)
+		if lastErr == nil || errors.Is(lastErr, context.Canceled) {
+			return lastErr
 		}
 
-		lastErr = err
-		a.logger.Warn("",
-			zap.String("msg", "register failed"),
-			zap.Error(err),
+		a.logger.Warn("register failed",
+			zap.Error(lastErr),
 			zap.String("retry", fmt.Sprintf("%d/%d", attempt, config.AgentMaxRetry)),
 		)
 
@@ -138,8 +151,7 @@ func (a *Agent) register(ctx context.Context) error {
 		if resp != nil {
 			statusCode = resp.StatusCode
 		}
-		a.logger.Warn("",
-			zap.String("msg", "websocket connection failed"),
+		a.logger.Warn("websocket connection failed",
 			zap.String("url", url),
 			zap.Error(err),
 			zap.Int("status_code", statusCode))
@@ -166,8 +178,7 @@ func (a *Agent) register(ctx context.Context) error {
 	}
 	defer ln.Close()
 
-	a.logger.Info("",
-		zap.String("msg", "listening for connections"),
+	a.logger.Info("listening for connections",
 		zap.String("address", a.config.LocalAddress))
 
 	errCh := make(chan error, 2)
@@ -217,7 +228,9 @@ func (a *Agent) acceptConnections(ctx context.Context, ln net.Listener, session 
 		}
 
 		// Handle connection in a separate goroutine
-		go a.handleConnection(ctx, conn, session)
+		a.pool.Submit(func() {
+			a.handleConnection(ctx, conn, session)
+		})
 	}
 }
 
@@ -227,8 +240,7 @@ func (a *Agent) handleConnection(ctx context.Context, conn net.Conn, session *sm
 
 	stream, err := session.OpenStream()
 	if err != nil {
-		a.logger.Warn("",
-			zap.String("msg", "open stream failed"),
+		a.logger.Warn("open stream failed",
 			zap.Error(err),
 			zap.String("remote", conn.RemoteAddr().String()))
 		return
@@ -242,8 +254,7 @@ func (a *Agent) handleConnection(ctx context.Context, conn net.Conn, session *sm
 // The tunnel can be canceled via context, it looks like this:
 // (socks client) <--conn--> Agent <--smux stream--> Server <--conn--> (socks server) <--> Destination
 func (a *Agent) tunnel(ctx context.Context, conn net.Conn, stream *smux.Stream) error {
-	a.logger.Debug("",
-		zap.String("msg", "tunneling"),
+	a.logger.Debug("start tunneling",
 		zap.String("local", conn.RemoteAddr().String()),
 		zap.String("remote", stream.RemoteAddr().String()),
 		zap.Uint32("stream_id", stream.ID()))
@@ -282,16 +293,14 @@ func (a *Agent) tunnel(ctx context.Context, conn net.Conn, stream *smux.Stream) 
 		err := <-errCh
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) {
-				a.logger.Debug("",
-					zap.String("msg", "tunnel closed"),
+				a.logger.Debug("tunnel closed",
 					zap.String("reason", err.Error()),
 					zap.String("remote", stream.RemoteAddr().String()),
 					zap.Int("id", int(stream.ID())))
 				return nil
 			}
 
-			a.logger.Warn("",
-				zap.String("msg", "tunnel killed"),
+			a.logger.Warn("tunnel killed",
 				zap.String("reason", err.Error()),
 				zap.String("remote", stream.RemoteAddr().String()),
 				zap.Int("id", int(stream.ID())))
