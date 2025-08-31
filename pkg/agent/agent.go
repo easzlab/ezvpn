@@ -257,7 +257,7 @@ func (a *Agent) tunnel(ctx context.Context, conn net.Conn, stream *smux.Stream) 
 	a.logger.Debug("start tunneling",
 		zap.String("local", conn.RemoteAddr().String()),
 		zap.String("remote", stream.RemoteAddr().String()),
-		zap.Uint32("stream_id", stream.ID()))
+		zap.Uint32("id", stream.ID()))
 
 	// Monitor context cancellation and close connections
 	go func() {
@@ -294,16 +294,14 @@ func (a *Agent) tunnel(ctx context.Context, conn net.Conn, stream *smux.Stream) 
 		if err != nil {
 			if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) || errors.Is(err, io.ErrClosedPipe) {
 				a.logger.Debug("tunnel closed",
-					zap.String("reason", err.Error()),
 					zap.String("remote", stream.RemoteAddr().String()),
 					zap.Int("id", int(stream.ID())))
 				return nil
 			}
 
 			a.logger.Warn("tunnel killed",
-				zap.String("reason", err.Error()),
 				zap.String("remote", stream.RemoteAddr().String()),
-				zap.Int("id", int(stream.ID())))
+				zap.Error(err))
 
 			return err
 		}

@@ -28,25 +28,25 @@ var (
 )
 
 func init() {
-	rootCmd.Flags().BoolVarP(&enablePprof, "enable-pprof", "", false, "enable pprof")
-	rootCmd.Flags().BoolVarP(&enableTLS, "enable-tls", "", true, "enable tls")
-	rootCmd.Flags().BoolVarP(&showVersion, "version", "", false, "show version")
-	rootCmd.Flags().StringVarP(&authKey, "auth-key", "k", "", "auth key")
-	rootCmd.Flags().StringVarP(&serverAddress, "server-addr", "s", "127.0.0.1:443", "server address")
+	rootCmd.Flags().BoolVarP(&enablePprof, "pprof", "", false, "enable pprof")
+	rootCmd.Flags().BoolVarP(&enableTLS, "tls", "", true, "enable tls")
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "show version")
+	rootCmd.Flags().StringVarP(&authKey, "auth", "k", "", "auth key")
+	rootCmd.Flags().StringVarP(&serverAddress, "server", "s", "127.0.0.1:8443", "server address")
 	rootCmd.Flags().StringVarP(&caFile, "ca", "", "ca.pem", "ca file")
 	rootCmd.Flags().StringVarP(&certFile, "cert", "", "eva.pem", "cert file")
 	rootCmd.Flags().StringVarP(&keyFile, "key", "", "eva-key.pem", "key file")
-	rootCmd.Flags().StringVarP(&localAddress, "local-addr", "l", "127.0.0.1:6116", "local address")
-	rootCmd.Flags().StringVarP(&lockFile, "lock-file", "", "eva.lock", "lock file")
-	rootCmd.Flags().StringVarP(&logFile, "log-file", "", "eva.log", "log file")
-	rootCmd.Flags().StringVarP(&logLevel, "log-level", "", "debug", "log level")
+	rootCmd.Flags().StringVarP(&localAddress, "listen", "l", "127.0.0.1:6116", "local address")
+	rootCmd.Flags().StringVarP(&lockFile, "lock", "", "eva.lock", "lock file")
+	rootCmd.Flags().StringVarP(&logFile, "logfile", "", "eva.log", "log file")
+	rootCmd.Flags().StringVarP(&logLevel, "loglvl", "", "debug", "log level")
 
 	rootCmd.MarkFlagRequired("auth-key")
 }
 
 var rootCmd = &cobra.Command{
 	Use:   "eva",
-	Short: "eva is a vpn agent",
+	Short: "ezvpn is a vpn over secure socks protocol, eva is the agent side",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
 			fmt.Println(config.FullVersion())

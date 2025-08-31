@@ -172,4 +172,11 @@ GT3IN1PASQwvmCRtNQCS+Ti52K5eQntjIXIrl6ULLzLZSuG2NSQ0wAoCD8WqEX9c
 n09BielJRg/FUjT+1sWwkHpjkPvrEgPuTcuK64hxb6srZrgc//vfFQ==
 -----END RSA PRIVATE KEY-----
 `
+
+	DefaultAgentsFile = `
+agents:
+  - name: test001
+    auth_key: 3b02fe02-2552-78ae-ed40-d4df03fc21c9
+    approved_cn: ezvpn-agent
+`
 )

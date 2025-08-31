@@ -1,0 +1,129 @@
+package socks
+
+import (
+	"fmt"
+	"io"
+	"net"
+	"strconv"
+)
+
+// AddrSpec is used to return the target AddrSpec
+// which may be specified as IPv4, IPv6, or a FQDN
+type AddrSpec struct {
+	FQDN string
+	IP   net.IP
+	Port int
+}
+
+func (a *AddrSpec) String() string {
+	if a.FQDN != "" {
+		return fmt.Sprintf("%s (%s):%d", a.FQDN, a.IP, a.Port)
+	}
+	return fmt.Sprintf("%s:%d", a.IP, a.Port)
+}
+
+// Address returns a string suitable to dial; prefer returning IP-based
+// address, fallback to FQDN
+func (a AddrSpec) Address() string {
+	if len(a.IP) > 0 {
+		return net.JoinHostPort(a.IP.String(), strconv.Itoa(a.Port))
+	}
+	return net.JoinHostPort(a.FQDN, strconv.Itoa(a.Port))
+}
+
+// A Request represents request received by a server
+type Request struct {
+	// Protocol version
+	Version uint8
+	// Requested command
+	Command uint8
+	// AddrSpec of the the network that sent the request
+	RemoteAddr *AddrSpec
+	// AddrSpec of the desired destination
+	DestAddr *AddrSpec
+}
+
+// ParseRequest is used to parse a request from a client
+func (r *Request) ParseRequest(conn net.Conn) error {
+	header := []byte{0, 0, 0}
+	if _, err := io.ReadAtLeast(conn, header, 3); err != nil {
+		return fmt.Errorf("read 3 bytes header error:%s", err.Error())
+	}
+
+	if header[0] != 0x05 {
+		return fmt.Errorf("unsupported proxy version")
+	}
+
+	// Read in the destination address
+	dest, err := readAddrSpec(conn)
+	if err != nil {
+		return err
+	}
+
+	r.Version = 0x05
+	r.Command = header[1]
+	r.DestAddr = dest
+
+	remote, ok := conn.RemoteAddr().(*net.TCPAddr)
+	if ok {
+		r.RemoteAddr = &AddrSpec{IP: remote.IP, Port: remote.Port}
+	} else {
+		// Not a TCP connection, may be using a unix socket
+		r.RemoteAddr = &AddrSpec{}
+	}
+
+	return nil
+}
+
+// readAddrSpec is used to read AddrSpec.
+// Expects an address type byte, follwed by the address and port
+func readAddrSpec(r io.Reader) (*AddrSpec, error) {
+	d := &AddrSpec{}
+
+	// Get the address type
+	addrType := []byte{0}
+	if _, err := r.Read(addrType); err != nil {
+		return nil, fmt.Errorf("read addr type error:%s", err.Error())
+	}
+
+	// Handle on a per type basis
+	switch addrType[0] {
+	case ipv4Address:
+		addr := make([]byte, 4)
+		if _, err := io.ReadAtLeast(r, addr, 4); err != nil {
+			return nil, fmt.Errorf("read ipv4 add error:%s", err.Error())
+		}
+		d.IP = net.IP(addr)
+
+	case ipv6Address:
+		addr := make([]byte, 16)
+		if _, err := io.ReadAtLeast(r, addr, 16); err != nil {
+			return nil, fmt.Errorf("read ipv6 add error:%s", err.Error())
+		}
+		d.IP = net.IP(addr)
+
+	case fqdnAddress:
+		buf := []byte{0}
+		if _, err := r.Read(buf); err != nil {
+			return nil, fmt.Errorf("read fqdn len error:%s", err.Error())
+		}
+		addrLen := int(buf[0])
+		fqdn := make([]byte, addrLen)
+		if _, err := io.ReadAtLeast(r, fqdn, addrLen); err != nil {
+			return nil, fmt.Errorf("read fqdn %d bytes error:%s", addrLen, err.Error())
+		}
+		d.FQDN = string(fqdn)
+
+	default:
+		return nil, fmt.Errorf("unrecognized address type")
+	}
+
+	// Read the port
+	port := []byte{0, 0}
+	if _, err := io.ReadAtLeast(r, port, 2); err != nil {
+		return nil, fmt.Errorf("read 2 bytes port error:%s", err.Error())
+	}
+	d.Port = (int(port[0]) << 8) | int(port[1])
+
+	return d, nil
+}
