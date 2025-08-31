@@ -86,6 +86,9 @@ func (ss *SocksServer) Run() error {
 }
 
 func (ss *SocksServer) SocksService(conn net.Conn) error {
+	if conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
 	defer conn.Close()
 
 	// Handle Authenticate handshake
