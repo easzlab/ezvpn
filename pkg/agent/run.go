@@ -13,12 +13,12 @@ import (
 )
 
 func (a *Agent) Run() error {
-	// 检查程序进程是否已经存在
+	// Check if the program process already exists
 	if err := checkProcessExists(a.config.LockFile); err == nil {
 		return fmt.Errorf("another instance of the program is already running")
 	}
 
-	// 创建锁文件
+	// Create lock file
 	if err := createLockFile(a.config.LockFile); err != nil {
 		return err
 	}
@@ -44,35 +44,35 @@ func (a *Agent) Run() error {
 	return err
 }
 
-// checkProcessExists 检查程序进程是否已经存在, 存在则返回nil, 不存在则返回错误
+// checkProcessExists checks if the program process already exists, returns nil if exists, returns error if not exists
 func checkProcessExists(lockFile string) error {
-	// 尝试打开锁文件
+	// Try to open the lock file
 	file, err := os.OpenFile(lockFile, os.O_CREATE|os.O_RDWR, 0666)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
 
-	// 读取文件内容
+	// Read file content
 	data, err := io.ReadAll(file)
 	if err != nil {
 		return err
 	}
 
-	// 解析文件内容
+	// Parse file content
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
 	if err != nil {
 		return err
 	}
 
-	// 检查进程是否存在
+	// Check if process exists
 	process, err := os.FindProcess(pid)
 	if err != nil {
 		return fmt.Errorf("error finding process: %s", err.Error())
 	}
 
 	if runtime.GOOS != "windows" {
-		// 类unix系统发送信号；windows 平台未实现，只能依靠上一步检查pid判断
+		// Unix-like systems send signal; Windows platform is not implemented, can only rely on the previous step to check pid
 		return process.Signal(syscall.Signal(0))
 	}
 
@@ -80,17 +80,17 @@ func checkProcessExists(lockFile string) error {
 }
 
 func createLockFile(lockFile string) error {
-	// 获取当前进程的PID
+	// Get the PID of the current process
 	pid := os.Getpid()
 
-	// 创建或打开锁文件
+	// Create or open the lock file
 	file, err := os.OpenFile(lockFile, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
 	if err != nil {
 		return fmt.Errorf("error creating lock file: %s", err.Error())
 	}
 	defer file.Close()
 
-	// 写入当前进程的PID到锁文件
+	// Write the current process PID to the lock file
 	_, err = file.WriteString(strconv.Itoa(pid))
 	if err != nil {
 		return fmt.Errorf("error writing PID to lock file: %s", err.Error())
