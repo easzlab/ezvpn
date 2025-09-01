@@ -49,7 +49,12 @@ var rootCmd = &cobra.Command{
 	Short: "ezvpn is a vpn over secure socks protocol, eva is the agent side",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if showVersion {
-			fmt.Println(config.FullVersion())
+			fmt.Printf("Version: %s\nBuild commit: %s\nBuild branch: %s\nBuild time: %s\n",
+				config.FullVersion(),
+				config.BuildCommit,
+				config.BuildBranch,
+				config.BuildTime,
+			)
 			return nil
 		}
 
