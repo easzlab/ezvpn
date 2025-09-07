@@ -95,6 +95,7 @@ e2e: ## run end-to-end tests
 .PHONY: bench
 bench: ## run benchmarks
 	@echo "Running benchmarks..."
+	@bash tests/benchmark.sh
 	@echo "✓ Benchmarks completed"
 
 .PHONY: deps
