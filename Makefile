@@ -10,11 +10,6 @@ BUILD_BRANCH := $(shell git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unk
 # Build configuration
 BUILD_DIR := build
 
-# Go configuration
-GO := go
-GOOS := $(shell go env GOOS)
-GOARCH := $(shell go env GOARCH)
-
 # Linker flags for build information
 LDFLAGS := -ldflags "-X '$(MODULE_NAME)/internal/config.BuildTime=$(BUILD_TIME)' \
                      -X '$(MODULE_NAME)/internal/config.BuildCommit=$(BUILD_COMMIT)' \
@@ -34,24 +29,24 @@ help: ## show help
 build: ## build the binary
 	@echo "Building $(PROJECT_NAME) agent(eva) and server(evs)..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 $(GO) build $(LDFLAGS) -o build/eva cmd/agent/main.go
-	CGO_ENABLED=0 $(GO) build $(LDFLAGS) -o build/evs cmd/server/main.go
+	CGO_ENABLED=0 go build $(LDFLAGS) -o build/eva cmd/agent/main.go
+	CGO_ENABLED=0 go build $(LDFLAGS) -o build/evs cmd/server/main.go
 	@echo "✓ Build completed."
 
 .PHONY: build-dev
 build-dev: ## build the binary with debug info
 	@echo "Building $(PROJECT_NAME) for development..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 $(GO) build -race -o build/eva cmd/agent/main.go
-	CGO_ENABLED=0 $(GO) build -race -o build/evs cmd/server/main.go
+	CGO_ENABLED=0 go build -race -o build/eva cmd/agent/main.go
+	CGO_ENABLED=0 go build -race -o build/evs cmd/server/main.go
 	@echo "✓ Development build completed."
 
 .PHONY: build-linux
 build-linux: ## build the binary for Linux
 	@echo "Building for Linux..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GO) build $(LDFLAGS) -o build/eva-linux-amd64 cmd/agent/main.go
-	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 $(GO) build $(LDFLAGS) -o build/evs-linux-arm64 cmd/server/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o build/eva-linux-amd64 cmd/agent/main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o build/evs-linux-arm64 cmd/server/main.go
 	@echo "✓ Linux build completed"
 
 .PHONY: build-windows
@@ -65,8 +60,8 @@ build-windows: ## build the binary for Windows
 build-darwin: ## build the binary for macOS
 	@echo "Building for macOS..."
 	@mkdir -p $(BUILD_DIR)
-	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GO) build $(LDFLAGS) -o build/eva-darwin-amd64 cmd/agent/main.go
-	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GO) build $(LDFLAGS) -o build/evs-darwin-arm64 cmd/server/main.go
+	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o build/eva-darwin-amd64 cmd/agent/main.go
+	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o build/evs-darwin-arm64 cmd/server/main.go
 	@echo "✓ macOS builds completed"
 
 .PHONY: build-all
@@ -76,14 +71,14 @@ build-all: build-linux build-windows build-darwin ## build the binary for all pl
 .PHONY: test
 test: ## run tests
 	@echo "Running tests..."
-	$(GO) test -v ./...
+	@go test -v ./...
 	@echo "✓ Tests completed"
 
 .PHONY: test-cov
 test-cov: ## run tests with coverage
 	@echo "Running tests with coverage..."
-	$(GO) test -v -coverprofile=coverage.out ./...
-	$(GO) tool cover -html=coverage.out -o coverage.html
+	go test -v -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
 	@echo "✓ Coverage report generated: coverage.html"
 
 .PHONY: e2e
@@ -101,7 +96,7 @@ bench: ## run benchmarks
 .PHONY: deps
 deps: ## download dependencies
 	@echo "Downloading dependencies..."
-	$(GO) mod download
+	@go mod download
 	@echo "✓ Dependencies downloaded"
 
 .PHONY: clean
